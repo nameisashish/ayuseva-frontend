@@ -80,6 +80,18 @@ class handler(BaseHTTPRequestHandler):
                 
             symptom_input_list = [s.strip().lower() for s in symptom_input_text.split(',')]
 
+            # 0. Pre-check: Is Gemini API available?
+            gemini_ping = call_gemini("Reply with OK")
+            if gemini_ping is None:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'maintenance': True,
+                    'message': 'AyuSeva is currently under maintenance. Please try again later.'
+                }).encode())
+                return
+
             # 1. Call Hugging Face API
             if not HF_API_URL:
                 # If the user hasn't set the HF URL yet in Vercel, return a mock or error

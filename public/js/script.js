@@ -150,8 +150,10 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .then(r => r.json())
             .then(data => {
-                if (data.error) {
-                    appendMessage(`Error: ${data.error}`, 'bot');
+                if (data.maintenance) {
+                    appendMessage('<div class="disclaimer"><strong>🔧 Maintenance:</strong><p>' + data.message + '</p></div>', 'bot');
+                } else if (data.error) {
+                    appendMessage('<div class="disclaimer"><strong>🔧 Maintenance:</strong><p>AyuSeva is currently under maintenance. Please try again later.</p></div>', 'bot');
                 } else {
                     if (data.quota_exceeded) {
                         displayFormattedResponse(data, true);
