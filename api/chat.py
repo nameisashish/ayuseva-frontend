@@ -58,7 +58,7 @@ class handler(BaseHTTPRequestHandler):
                 self.send_response(503)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(json.dumps({'error': 'AI is temporarily unavailable (quota limit). Please try again later.'}).encode())
+                self.wfile.write(json.dumps({'error': 'The app is currently under maintenance. Please try again later.'}).encode())
 
         except Exception as e:
             self.send_response(500)

@@ -143,9 +143,9 @@ class handler(BaseHTTPRequestHandler):
             prompt = (
                 f"I have the following symptoms: {symptom_input_text}. "
                 f"Our AI diagnostic model predicts with {confidence:.1f}% confidence that I may have **{predicted_disease}**. "
-                f"Considering these symptoms and the predicted disease, please provide detailed, precise medical information including "
+                f"Considering these symptoms and the predicted disease, please provide highly concise, precise, and short bullet points for: "
                 f"Additional Symptoms, Prevention, Precautions, Treatment Options, Medical Advice, Diet, "
-                f"Additional Tips, Complications, and Medications."
+                f"Additional Tips, Complications, and Medications. Keep responses brief to save reading time."
             )
             gemini_text = call_gemini(prompt)
             
