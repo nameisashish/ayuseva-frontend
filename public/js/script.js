@@ -153,9 +153,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.error) {
                     appendMessage(`Error: ${data.error}`, 'bot');
                 } else {
-                    displayFormattedResponse(data);
                     if (data.quota_exceeded) {
-                        appendMessage('<div class="disclaimer"><strong>ℹ️ Note:</strong><p>AyuSeva is currently under maintenance. The disease prediction above is still valid, but detailed medical information is temporarily unavailable. You can continue typing new symptoms for another prediction.</p></div>', 'bot');
+                        displayFormattedResponse(data, true);
+                        appendMessage('<div class="disclaimer"><strong>ℹ️ Note:</strong><p>AyuSeva is currently under maintenance. Detailed medical information is temporarily unavailable.</p></div>', 'bot');
+                    } else {
+                        displayFormattedResponse(data, false);
                     }
                 }
                 scrollToBottom();
@@ -251,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //   FORMATTED PREDICTION RESPONSE
     // ═══════════════════════════════════════════════════════════════════════
 
-    function displayFormattedResponse(data) {
+    function displayFormattedResponse(data, isMaintenance = false) {
         const section = (title, items) => `
             <div class="section">
                 <strong class="section-title">${title}</strong>
@@ -259,8 +261,14 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
-        if (data.predicted_disease)
-            appendMessage(section('🩺 Predicted Disease', [data.predicted_disease]), 'bot');
+        if (data.predicted_disease) {
+            // Only show prediction if we are NOT in maintenance, OR if we are and confidence > 95%
+            if (!isMaintenance || (isMaintenance && data.confidence > 95)) {
+                appendMessage(section('🩺 Predicted Disease', [data.predicted_disease]), 'bot');
+            } else if (isMaintenance && data.confidence <= 95) {
+                appendMessage(section('🩺 Status', ['Diagnosis requires deeper AI analysis which is currently down.']), 'bot');
+            }
+        }
         if (data.symptoms?.length)
             appendMessage(section('🤒 Symptoms Analyzed', data.symptoms), 'bot');
         if (data.additional_symptoms?.length)
