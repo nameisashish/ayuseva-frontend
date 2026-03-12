@@ -117,7 +117,29 @@ class handler(BaseHTTPRequestHandler):
                 'complications': [],
             }
 
-            # 2. Call Gemini API
+            # 2. Validate with Gemini API
+            validation_prompt = (
+                f"I have the following symptoms: {symptom_input_text}. "
+                f"An AI diagnostic model predicted with {confidence:.1f}% confidence that I may have {predicted_disease}. "
+                f"As a medical expert, evaluate this prediction. If the prediction is a reasonable preliminary diagnosis for these symptoms, "
+                f"respond ONLY with 'VALID'. If the prediction is incorrect, unlikely, or the confidence is strictly less than 40%, "
+                f"respond ONLY with 'INVALID: [Your Corrected Disease Prediction]'. Do not include any other text."
+            )
+            validation_response = call_gemini(validation_prompt)
+            
+            if validation_response:
+                validation_response = validation_response.strip()
+                if validation_response.startswith("INVALID:"):
+                    # Gemini has chosen to override the primary model
+                    corrected_disease = validation_response.replace("INVALID:", "").strip()
+                    predicted_disease = corrected_disease
+                    confidence = 99.0
+                    winner = "GEMINI OVERRIDE"
+                    response['predicted_disease'] = predicted_disease
+                    response['confidence'] = confidence
+                    response['winner'] = winner
+
+            # 3. Call Gemini API for Detailed Document
             prompt = (
                 f"I have the following symptoms: {symptom_input_text}. "
                 f"Our AI diagnostic model predicts with {confidence:.1f}% confidence that I may have **{predicted_disease}**. "

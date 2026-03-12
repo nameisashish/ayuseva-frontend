@@ -190,6 +190,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? appendMessage(`Error: ${data.error}`, 'bot')
                     : appendMessage(data.message, 'bot');
                 scrollToBottom();
+                
+                if (data.reset) {
+                    setTimeout(() => window.location.reload(), 2500);
+                }
             })
             .catch(err => {
                 console.error('Chat error:', err);
