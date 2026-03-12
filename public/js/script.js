@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     displayFormattedResponse(data);
                     if (data.quota_exceeded) {
-                        appendMessage('<div class="disclaimer"><strong>ℹ️ Note:</strong><p>AI medical details are temporarily unavailable (quota limit). The disease prediction above is still valid. You can continue typing new symptoms for another prediction.</p></div>', 'bot');
+                        appendMessage('<div class="disclaimer"><strong>ℹ️ Note:</strong><p>AyuSeva is currently under maintenance. The disease prediction above is still valid, but detailed medical information is temporarily unavailable. You can continue typing new symptoms for another prediction.</p></div>', 'bot');
                     }
                 }
                 scrollToBottom();

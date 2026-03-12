@@ -145,7 +145,8 @@ class handler(BaseHTTPRequestHandler):
                 f"Our AI diagnostic model predicts with {confidence:.1f}% confidence that I may have **{predicted_disease}**. "
                 f"Considering these symptoms and the predicted disease, please provide highly concise, precise, and short bullet points for: "
                 f"Additional Symptoms, Prevention, Precautions, Treatment Options, Medical Advice, Diet, "
-                f"Additional Tips, Complications, and Medications. Keep responses brief to save reading time."
+                f"Additional Tips, Complications, and Medications. "
+                f"CRITICAL: Limit each section to exactly 1 or 2 extremely short bullet points. Be precise and omit lengthy explanations to save tokens."
             )
             gemini_text = call_gemini(prompt)
             
