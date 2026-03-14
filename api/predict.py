@@ -2,18 +2,38 @@ import os
 import json
 import requests
 import google.generativeai as gen_ai
+from groq import Groq
 from http.server import BaseHTTPRequestHandler
 
-# Configure Gemini with the API Key securely stored in Vercel Environment Variables
-gen_ai.configure(api_key=os.environ.get("GOOGLE_API_KEY", ""))
-gemini_15 = gen_ai.GenerativeModel(model_name="gemini-1.5-flash")
-gemini_25 = gen_ai.GenerativeModel(model_name="gemini-2.5-flash")
-GEMINI_MODELS = [("gemini-1.5-flash", gemini_15), ("gemini-2.5-flash", gemini_25)]
+# Groq — primary LLM (free tier resets daily)
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-HF_API_URL = os.environ.get("HF_API_URL", "") # URL of the Hugging Face Space (e.g. https://username-spacename.hf.space/predict)
+# Gemini — fallback LLM
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+if GOOGLE_API_KEY:
+    gen_ai.configure(api_key=GOOGLE_API_KEY)
+gemini_15 = gen_ai.GenerativeModel(model_name="gemini-1.5-flash") if GOOGLE_API_KEY else None
+gemini_25 = gen_ai.GenerativeModel(model_name="gemini-2.5-flash") if GOOGLE_API_KEY else None
+GEMINI_MODELS = [(n, m) for n, m in [("gemini-1.5-flash", gemini_15), ("gemini-2.5-flash", gemini_25)] if m]
+
+HF_API_URL = os.environ.get("HF_API_URL", "")
 
 def call_gemini(prompt):
-    """Try gemini-1.5-flash first, fallback to gemini-2.5-flash, return None if both fail."""
+    """Try Groq first, then Gemini models as fallback. Returns text or None."""
+    # 1. Try Groq first
+    if groq_client:
+        try:
+            response = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+            )
+            print(f"[GROQ] ✅ llama-3.3-70b-versatile responded successfully")
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"[GROQ] ❌ Failed: {e}, falling back to Gemini...")
+
+    # 2. Fallback to Gemini
     for model_name, model in GEMINI_MODELS:
         try:
             response = model.generate_content(prompt)
@@ -22,7 +42,7 @@ def call_gemini(prompt):
         except Exception as e:
             print(f"[GEMINI] ❌ {model_name} failed: {e}")
             continue
-    print("[GEMINI] ⚠️ All models exhausted — returning None")
+    print("[LLM] ⚠️ All models exhausted — returning None")
     return None
 
 def extract_information_with_prevention_and_distinction(gemini_response_text, user_symptoms):
