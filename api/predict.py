@@ -17,9 +17,12 @@ def call_gemini(prompt):
     for model_name, model in GEMINI_MODELS:
         try:
             response = model.generate_content(prompt)
+            print(f"[GEMINI] ✅ {model_name} responded successfully")
             return response.text
         except Exception as e:
+            print(f"[GEMINI] ❌ {model_name} failed: {e}")
             continue
+    print("[GEMINI] ⚠️ All models exhausted — returning None")
     return None
 
 def extract_information_with_prevention_and_distinction(gemini_response_text, user_symptoms):
