@@ -1,6 +1,5 @@
 import os
 import json
-import urllib.request
 import requests
 from http.server import BaseHTTPRequestHandler
 
@@ -12,14 +11,18 @@ HF_API_URL = os.environ.get("HF_API_URL", "")
 
 
 def call_groq(prompt, system_msg="You are a medical expert. Provide detailed, well-structured medical information with clear bullet points for each section.", max_tokens=3000):
-    """Call Groq API."""
+    """Call Groq API using requests library."""
     if not GROQ_API_KEY:
         print("[GROQ] ⚠️ No API key configured")
         return None
     try:
-        req = urllib.request.Request(
+        resp = requests.post(
             GROQ_URL,
-            data=json.dumps({
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {GROQ_API_KEY}"
+            },
+            json={
                 "model": GROQ_MODEL,
                 "messages": [
                     {"role": "system", "content": system_msg},
@@ -27,17 +30,14 @@ def call_groq(prompt, system_msg="You are a medical expert. Provide detailed, we
                 ],
                 "temperature": 0.7,
                 "max_tokens": max_tokens
-            }).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {GROQ_API_KEY}"
-            }
+            },
+            timeout=30
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode())
-            text = data["choices"][0]["message"]["content"]
-            print(f"[GROQ] ✅ {GROQ_MODEL} responded successfully")
-            return text
+        resp.raise_for_status()
+        data = resp.json()
+        text = data["choices"][0]["message"]["content"]
+        print(f"[GROQ] ✅ {GROQ_MODEL} responded successfully")
+        return text
     except Exception as e:
         print(f"[GROQ] ❌ Failed: {e}")
         return None
