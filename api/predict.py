@@ -2,38 +2,57 @@ import os
 import json
 import requests
 import google.generativeai as gen_ai
-from groq import Groq
 from http.server import BaseHTTPRequestHandler
 
-# Groq — primary LLM (free tier resets daily)
+# --- Groq (Primary) ---
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# Gemini — fallback LLM
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
-if GOOGLE_API_KEY:
-    gen_ai.configure(api_key=GOOGLE_API_KEY)
-gemini_15 = gen_ai.GenerativeModel(model_name="gemini-1.5-flash") if GOOGLE_API_KEY else None
-gemini_25 = gen_ai.GenerativeModel(model_name="gemini-2.5-flash") if GOOGLE_API_KEY else None
-GEMINI_MODELS = [(n, m) for n, m in [("gemini-1.5-flash", gemini_15), ("gemini-2.5-flash", gemini_25)] if m]
+# --- Gemini (Fallback) ---
+gen_ai.configure(api_key=os.environ.get("GOOGLE_API_KEY", ""))
+gemini_15 = gen_ai.GenerativeModel(model_name="gemini-1.5-flash")
+gemini_25 = gen_ai.GenerativeModel(model_name="gemini-2.5-flash")
+GEMINI_MODELS = [("gemini-1.5-flash", gemini_15), ("gemini-2.5-flash", gemini_25)]
 
 HF_API_URL = os.environ.get("HF_API_URL", "")
 
-def call_gemini(prompt):
-    """Try Groq first, then Gemini models as fallback. Returns text or None."""
-    # 1. Try Groq first
-    if groq_client:
-        try:
-            response = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            print(f"[GROQ] ✅ llama-3.3-70b-versatile responded successfully")
-            return response.choices[0].message.content
-        except Exception as e:
-            print(f"[GROQ] ❌ Failed: {e}, falling back to Gemini...")
 
-    # 2. Fallback to Gemini
+def call_groq(prompt):
+    """Call Groq API. Returns response text or None on failure."""
+    if not GROQ_API_KEY:
+        print("[GROQ] ⚠️ No API key configured, skipping")
+        return None
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            GROQ_URL,
+            data=json.dumps({
+                "model": GROQ_MODEL,
+                "messages": [
+                    {"role": "system", "content": "You are a medical expert. Provide detailed, well-structured medical information with clear bullet points for each section."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 3000
+            }).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {GROQ_API_KEY}"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+            text = data["choices"][0]["message"]["content"]
+            print(f"[GROQ] ✅ {GROQ_MODEL} responded successfully")
+            return text
+    except Exception as e:
+        print(f"[GROQ] ❌ Failed: {e}")
+        return None
+
+
+def call_gemini(prompt):
+    """Try Gemini models as fallback. Returns response text or None."""
     for model_name, model in GEMINI_MODELS:
         try:
             response = model.generate_content(prompt)
@@ -42,12 +61,22 @@ def call_gemini(prompt):
         except Exception as e:
             print(f"[GEMINI] ❌ {model_name} failed: {e}")
             continue
-    print("[LLM] ⚠️ All models exhausted — returning None")
+    print("[GEMINI] ⚠️ All models exhausted — returning None")
     return None
 
-def extract_information_with_prevention_and_distinction(gemini_response_text, user_symptoms):
-    """Parse Gemini response into structured sections."""
-    response_lines = gemini_response_text.splitlines()
+
+def call_llm(prompt):
+    """Try Groq first, fall back to Gemini."""
+    result = call_groq(prompt)
+    if result:
+        return result
+    print("[LLM] ⚠️ Groq unavailable, falling back to Gemini...")
+    return call_gemini(prompt)
+
+
+def extract_information_with_prevention_and_distinction(response_text, user_symptoms):
+    """Parse LLM response into structured sections."""
+    response_lines = response_text.splitlines()
     precautions, preventive_measures, treatments = [], [], []
     medications, diets, medical_advice = [], [], []
     complications, additional_symptoms_list = [], []
@@ -93,19 +122,19 @@ class handler(BaseHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data)
-            
+
             symptom_input_text = data.get('symptoms', '').strip().lower()
             if not symptom_input_text:
                 self.send_response(400)
                 self.end_headers()
                 self.wfile.write(json.dumps({'error': 'No symptoms provided.'}).encode())
                 return
-                
+
             symptom_input_list = [s.strip().lower() for s in symptom_input_text.split(',')]
 
-            # 0. Pre-check: Is Gemini API available?
-            gemini_ping = call_gemini("Reply with OK")
-            if gemini_ping is None:
+            # 0. Pre-check: Is any LLM available?
+            llm_ping = call_llm("Reply with OK")
+            if llm_ping is None:
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
@@ -117,19 +146,18 @@ class handler(BaseHTTPRequestHandler):
 
             # 1. Call Hugging Face API
             if not HF_API_URL:
-                # If the user hasn't set the HF URL yet in Vercel, return a mock or error
                 self.send_response(500)
                 self.end_headers()
                 self.wfile.write(json.dumps({'error': 'HF_API_URL environment variable is not configured in Vercel.'}).encode())
                 return
-                
+
             hf_res = requests.post(HF_API_URL, json={"symptoms": symptom_input_text})
             if hf_res.status_code != 200:
                 self.send_response(500)
                 self.end_headers()
                 self.wfile.write(json.dumps({'error': f'Failed to call Hugging Face Space: {hf_res.text}'}).encode())
                 return
-                
+
             result = hf_res.json()
             predicted_disease = result['predicted_disease']
             confidence = result['confidence']
@@ -152,7 +180,7 @@ class handler(BaseHTTPRequestHandler):
                 'complications': [],
             }
 
-            # 2. Validate with Gemini API
+            # 2. Validate with LLM
             validation_prompt = (
                 f"I have the following symptoms: {symptom_input_text}. "
                 f"An AI diagnostic model predicted with {confidence:.1f}% confidence that I may have {predicted_disease}. "
@@ -160,34 +188,40 @@ class handler(BaseHTTPRequestHandler):
                 f"respond ONLY with 'VALID'. If the prediction is incorrect, unlikely, or the confidence is strictly less than 40%, "
                 f"respond ONLY with 'INVALID: [Your Corrected Disease Prediction]'. Do not include any other text."
             )
-            validation_response = call_gemini(validation_prompt)
-            
+            validation_response = call_llm(validation_prompt)
+
             if validation_response:
                 validation_response = validation_response.strip()
                 if validation_response.startswith("INVALID:"):
-                    # Gemini has chosen to override the primary model
                     corrected_disease = validation_response.replace("INVALID:", "").strip()
                     predicted_disease = corrected_disease
                     confidence = 99.0
-                    winner = "GEMINI OVERRIDE"
+                    winner = "AI OVERRIDE"
                     response['predicted_disease'] = predicted_disease
                     response['confidence'] = confidence
                     response['winner'] = winner
 
-            # 3. Call Gemini API for Detailed Document
+            # 3. Call LLM for Detailed Medical Document
             prompt = (
                 f"I have the following symptoms: {symptom_input_text}. "
                 f"Our AI diagnostic model predicts with {confidence:.1f}% confidence that I may have **{predicted_disease}**. "
-                f"Considering these symptoms and the predicted disease, please provide highly concise, precise, and short bullet points for: "
-                f"Additional Symptoms, Prevention, Precautions, Treatment Options, Medical Advice, Diet, "
-                f"Additional Tips, Complications, and Medications. "
-                f"CRITICAL: Limit each section to exactly 1 or 2 extremely short bullet points. Be precise and omit lengthy explanations to save tokens."
+                f"Considering these symptoms and the predicted disease, please provide detailed bullet points (4-6 points per section) for each of the following sections: "
+                f"1. Additional Symptoms (4-5 related symptoms to watch for), "
+                f"2. Prevention (5-6 preventive measures), "
+                f"3. Precautions (4-5 important precautions), "
+                f"4. Treatment Options (5-6 treatment approaches including home remedies and medical treatments), "
+                f"5. Medical Advice (4-5 points on when to see a doctor and what to expect), "
+                f"6. Diet (5-6 foods to eat and avoid), "
+                f"7. Additional Tips (4-5 lifestyle and wellness tips), "
+                f"8. Complications (4-5 potential complications if untreated), "
+                f"9. Medications (4-5 commonly used medications with brief usage notes). "
+                f"Be informative and practical. Use clear bullet points with brief explanations for each point."
             )
-            gemini_text = call_gemini(prompt)
-            
-            if gemini_text:
+            llm_text = call_llm(prompt)
+
+            if llm_text:
                 precautions, preventive_measures, medications, treatments, diets, medical_advice, complications, additional_symptoms_list = \
-                    extract_information_with_prevention_and_distinction(gemini_text, symptom_input_list)
+                    extract_information_with_prevention_and_distinction(llm_text, symptom_input_list)
                 response.update({
                     'additional_symptoms': additional_symptoms_list,
                     'precautions': precautions,
