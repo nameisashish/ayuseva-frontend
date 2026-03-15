@@ -1,40 +1,32 @@
 import os
 import json
+import urllib.request
 import requests
-import google.generativeai as gen_ai
 from http.server import BaseHTTPRequestHandler
 
-# --- Groq (Primary) ---
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# --- Gemini (Fallback) ---
-gen_ai.configure(api_key=os.environ.get("GOOGLE_API_KEY", ""))
-gemini_15 = gen_ai.GenerativeModel(model_name="gemini-1.5-flash")
-gemini_25 = gen_ai.GenerativeModel(model_name="gemini-2.5-flash")
-GEMINI_MODELS = [("gemini-1.5-flash", gemini_15), ("gemini-2.5-flash", gemini_25)]
-
 HF_API_URL = os.environ.get("HF_API_URL", "")
 
 
-def call_groq(prompt):
-    """Call Groq API. Returns response text or None on failure."""
+def call_groq(prompt, system_msg="You are a medical expert. Provide detailed, well-structured medical information with clear bullet points for each section.", max_tokens=3000):
+    """Call Groq API."""
     if not GROQ_API_KEY:
-        print("[GROQ] ⚠️ No API key configured, skipping")
+        print("[GROQ] ⚠️ No API key configured")
         return None
     try:
-        import urllib.request
         req = urllib.request.Request(
             GROQ_URL,
             data=json.dumps({
                 "model": GROQ_MODEL,
                 "messages": [
-                    {"role": "system", "content": "You are a medical expert. Provide detailed, well-structured medical information with clear bullet points for each section."},
+                    {"role": "system", "content": system_msg},
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.7,
-                "max_tokens": 3000
+                "max_tokens": max_tokens
             }).encode(),
             headers={
                 "Content-Type": "application/json",
@@ -49,29 +41,6 @@ def call_groq(prompt):
     except Exception as e:
         print(f"[GROQ] ❌ Failed: {e}")
         return None
-
-
-def call_gemini(prompt):
-    """Try Gemini models as fallback. Returns response text or None."""
-    for model_name, model in GEMINI_MODELS:
-        try:
-            response = model.generate_content(prompt)
-            print(f"[GEMINI] ✅ {model_name} responded successfully")
-            return response.text
-        except Exception as e:
-            print(f"[GEMINI] ❌ {model_name} failed: {e}")
-            continue
-    print("[GEMINI] ⚠️ All models exhausted — returning None")
-    return None
-
-
-def call_llm(prompt):
-    """Try Groq first, fall back to Gemini."""
-    result = call_groq(prompt)
-    if result:
-        return result
-    print("[LLM] ⚠️ Groq unavailable, falling back to Gemini...")
-    return call_gemini(prompt)
 
 
 def extract_information_with_prevention_and_distinction(response_text, user_symptoms):
@@ -132,9 +101,9 @@ class handler(BaseHTTPRequestHandler):
 
             symptom_input_list = [s.strip().lower() for s in symptom_input_text.split(',')]
 
-            # 0. Pre-check: Is any LLM available?
-            llm_ping = call_llm("Reply with OK")
-            if llm_ping is None:
+            # 0. Pre-check: Is Groq available?
+            groq_ping = call_groq("Reply with OK", max_tokens=10)
+            if groq_ping is None:
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
@@ -180,7 +149,7 @@ class handler(BaseHTTPRequestHandler):
                 'complications': [],
             }
 
-            # 2. Validate with LLM
+            # 2. Validate with Groq
             validation_prompt = (
                 f"I have the following symptoms: {symptom_input_text}. "
                 f"An AI diagnostic model predicted with {confidence:.1f}% confidence that I may have {predicted_disease}. "
@@ -188,7 +157,7 @@ class handler(BaseHTTPRequestHandler):
                 f"respond ONLY with 'VALID'. If the prediction is incorrect, unlikely, or the confidence is strictly less than 40%, "
                 f"respond ONLY with 'INVALID: [Your Corrected Disease Prediction]'. Do not include any other text."
             )
-            validation_response = call_llm(validation_prompt)
+            validation_response = call_groq(validation_prompt, max_tokens=50)
 
             if validation_response:
                 validation_response = validation_response.strip()
@@ -201,7 +170,7 @@ class handler(BaseHTTPRequestHandler):
                     response['confidence'] = confidence
                     response['winner'] = winner
 
-            # 3. Call LLM for Detailed Medical Document
+            # 3. Call Groq for Detailed Medical Document
             prompt = (
                 f"I have the following symptoms: {symptom_input_text}. "
                 f"Our AI diagnostic model predicts with {confidence:.1f}% confidence that I may have **{predicted_disease}**. "
@@ -217,11 +186,11 @@ class handler(BaseHTTPRequestHandler):
                 f"9. Medications (4-5 commonly used medications with brief usage notes). "
                 f"Be informative and practical. Use clear bullet points with brief explanations for each point."
             )
-            llm_text = call_llm(prompt)
+            groq_text = call_groq(prompt)
 
-            if llm_text:
+            if groq_text:
                 precautions, preventive_measures, medications, treatments, diets, medical_advice, complications, additional_symptoms_list = \
-                    extract_information_with_prevention_and_distinction(llm_text, symptom_input_list)
+                    extract_information_with_prevention_and_distinction(groq_text, symptom_input_list)
                 response.update({
                     'additional_symptoms': additional_symptoms_list,
                     'precautions': precautions,
