@@ -7,7 +7,10 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-HF_API_URL = os.environ.get("HF_API_URL", "")
+HF_API_URL = os.environ.get(
+    "HF_API_URL",
+    "https://theashish03-medical-assistant-api.hf.space/predict"
+)
 
 
 def call_groq(prompt, system_msg="You are a medical expert. Provide detailed, well-structured medical information with clear bullet points for each section.", max_tokens=3000):
