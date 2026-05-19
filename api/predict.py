@@ -11,6 +11,8 @@ HF_API_URL = os.environ.get(
     "HF_API_URL",
     "https://theashish03-medical-assistant-api.hf.space/predict"
 )
+CORS_ALLOWED_ORIGIN = os.environ.get("CORS_ALLOWED_ORIGIN", "")
+MAX_BODY_BYTES = 8192
 
 
 def call_groq(prompt, system_msg="You are a medical expert. Provide detailed, well-structured medical information with clear bullet points for each section.", max_tokens=3000):
@@ -80,10 +82,18 @@ def extract_information_with_prevention_and_distinction(response_text, user_symp
 
 class handler(BaseHTTPRequestHandler):
     def end_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
+        if CORS_ALLOWED_ORIGIN:
+            self.send_header('Access-Control-Allow-Origin', CORS_ALLOWED_ORIGIN)
+            self.send_header('Vary', 'Origin')
         self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         super().end_headers()
+
+    def send_json(self, status_code, payload):
+        self.send_response(status_code)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode())
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -92,42 +102,29 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             content_length = int(self.headers['Content-Length'])
+            if content_length > MAX_BODY_BYTES:
+                self.send_json(413, {'error': 'Request is too large.'})
+                return
+
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data)
 
             symptom_input_text = data.get('symptoms', '').strip().lower()
             if not symptom_input_text:
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': 'No symptoms provided.'}).encode())
+                self.send_json(400, {'error': 'No symptoms provided.'})
                 return
 
             symptom_input_list = [s.strip().lower() for s in symptom_input_text.split(',')]
 
-            # 0. Pre-check: Is Groq available?
-            groq_ping = call_groq("Reply with OK", max_tokens=10)
-            if groq_ping is None:
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    'maintenance': True,
-                    'message': 'AyuSeva is currently under maintenance. Please try again later.'
-                }).encode())
-                return
-
             # 1. Call Hugging Face API
             if not HF_API_URL:
-                self.send_response(500)
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': 'HF_API_URL environment variable is not configured in Vercel.'}).encode())
+                self.send_json(503, {'error': 'Prediction service is temporarily unavailable.'})
                 return
 
-            hf_res = requests.post(HF_API_URL, json={"symptoms": symptom_input_text})
+            hf_res = requests.post(HF_API_URL, json={"symptoms": symptom_input_text}, timeout=30)
             if hf_res.status_code != 200:
-                self.send_response(500)
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': f'Failed to call Hugging Face Space: {hf_res.text}'}).encode())
+                print(f"[HF] Prediction request failed: {hf_res.status_code} {hf_res.text[:300]}")
+                self.send_json(503, {'error': 'Prediction service is temporarily unavailable.'})
                 return
 
             result = hf_res.json()
@@ -207,13 +204,8 @@ class handler(BaseHTTPRequestHandler):
             else:
                 response['quota_exceeded'] = True
 
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps(response).encode())
+            self.send_json(200, response)
 
         except Exception as e:
-            self.send_response(500)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'error': str(e)}).encode())
+            print(f"[PREDICT] Request failed: {e}")
+            self.send_json(500, {'error': 'The app is currently under maintenance. Please try again later.'})

@@ -83,13 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
     //   INITIALIZE
     // ═══════════════════════════════════════════════════════════════════════
 
-    const disclaimerHTML = `
-        <div class="disclaimer">
-            <strong>⚠️ Medical Disclaimer</strong>
-            <p>This assistant provides preliminary symptom analysis only. It is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider.</p>
-        </div>
-    `;
-
     initializeChat();
 
     // Event listeners
@@ -130,8 +123,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('light-mode');
 
         // Welcome messages
-        appendMessage(disclaimerHTML, 'bot');
-        appendMessage('<div><strong>Welcome to AyuSeva! 🩺</strong><br>I\'m your AI Medical Assistant. Describe your symptoms or ask any health-related question to get started.</div>', 'bot');
+        appendMessage(createMedicalDisclaimer(), 'bot');
+        appendMessage(createWelcomeMessage('Welcome to AyuSeva! 🩺', 'I\'m your AI Medical Assistant. Describe your symptoms or ask any health-related question to get started.'), 'bot');
 
         // First-time tutorial
         if (localStorage.getItem('tutorialShown') !== 'true') {
@@ -157,13 +150,13 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(r => r.json())
             .then(data => {
                 if (data.maintenance) {
-                    appendMessage('<div class="disclaimer"><strong>🔧 Maintenance:</strong><p>' + data.message + '</p></div>', 'bot');
+                    appendMessage(createDisclaimer('🔧 Maintenance:', data.message), 'bot');
                 } else if (data.error) {
-                    appendMessage('<div class="disclaimer"><strong>🔧 Maintenance:</strong><p>AyuSeva is currently under maintenance. Please try again later.</p></div>', 'bot');
+                    appendMessage(createDisclaimer('🔧 Maintenance:', 'AyuSeva is currently under maintenance. Please try again later.'), 'bot');
                 } else {
                     if (data.quota_exceeded) {
                         displayFormattedResponse(data, true);
-                        appendMessage('<div class="disclaimer"><strong>ℹ️ Note:</strong><p>AyuSeva is currently under maintenance. Detailed medical information is temporarily unavailable.</p></div>', 'bot');
+                        appendMessage(createDisclaimer('ℹ️ Note:', 'AyuSeva is currently under maintenance. Detailed medical information is temporarily unavailable.'), 'bot');
                     } else {
                         displayFormattedResponse(data, false);
                     }
@@ -181,9 +174,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 showLoading(false);
                 // Reset chat after a short delay so user sees the goodbye
                 setTimeout(() => {
-                    chatMessages.innerHTML = '';
-                    appendMessage(disclaimerHTML, 'bot');
-                    appendMessage('<div><strong>Welcome back to AyuSeva! 🩺</strong><br>Describe your symptoms to get a new health assessment.</div>', 'bot');
+                    chatMessages.replaceChildren();
+                    appendMessage(createMedicalDisclaimer(), 'bot');
+                    appendMessage(createWelcomeMessage('Welcome back to AyuSeva! 🩺', 'Describe your symptoms to get a new health assessment.'), 'bot');
                     scrollToBottom();
                 }, 2500);
                 return;
@@ -221,7 +214,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const contentDiv = document.createElement('div');
         contentDiv.classList.add('message-content');
-        contentDiv.innerHTML = cleanText(content);
+
+        if (content instanceof Node) {
+            contentDiv.appendChild(content);
+        } else {
+            appendTextWithLineBreaks(contentDiv, String(content));
+        }
+
         msgDiv.appendChild(contentDiv);
 
         if (sender === 'bot') {
@@ -231,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const speechBtn = document.createElement('button');
             speechBtn.classList.add('speech-button');
             speechBtn.setAttribute('aria-label', 'Play speech');
-            speechBtn.innerHTML = '<span class="speech-icon">🔊</span>';
+            speechBtn.appendChild(createSpeechIcon('🔊'));
             speechBtn.dataset.state = 'play';
             speechBtn.onclick = () => toggleSpeech(contentDiv.textContent.trim(), speechBtn);
 
@@ -249,8 +248,76 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function cleanText(text) {
-        return text.replace(/\*/g, '').replace(/\n/g, '<br>');
+    function appendTextWithLineBreaks(container, text) {
+        text.replace(/\*/g, '').split('\n').forEach((line, index) => {
+            if (index > 0) container.appendChild(document.createElement('br'));
+            container.appendChild(document.createTextNode(line));
+        });
+    }
+
+    function createSpeechIcon(symbol) {
+        const icon = document.createElement('span');
+        icon.classList.add('speech-icon');
+        icon.textContent = symbol;
+        return icon;
+    }
+
+    function setSpeechIcon(button, symbol) {
+        button.replaceChildren(createSpeechIcon(symbol));
+    }
+
+    function createDisclaimer(title, message) {
+        const wrapper = document.createElement('div');
+        wrapper.classList.add('disclaimer');
+
+        const strong = document.createElement('strong');
+        strong.textContent = title;
+        wrapper.appendChild(strong);
+
+        const paragraph = document.createElement('p');
+        paragraph.textContent = message;
+        wrapper.appendChild(paragraph);
+
+        return wrapper;
+    }
+
+    function createMedicalDisclaimer() {
+        return createDisclaimer(
+            '⚠️ Medical Disclaimer',
+            'This assistant provides preliminary symptom analysis only. It is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider.'
+        );
+    }
+
+    function createWelcomeMessage(titleText, bodyText) {
+        const wrapper = document.createElement('div');
+
+        const title = document.createElement('strong');
+        title.textContent = titleText;
+        wrapper.appendChild(title);
+        wrapper.appendChild(document.createElement('br'));
+        wrapper.appendChild(document.createTextNode(bodyText));
+
+        return wrapper;
+    }
+
+    function createSection(title, items) {
+        const wrapper = document.createElement('div');
+        wrapper.classList.add('section');
+
+        const heading = document.createElement('strong');
+        heading.classList.add('section-title');
+        heading.textContent = title;
+        wrapper.appendChild(heading);
+
+        const list = document.createElement('ul');
+        items.forEach(item => {
+            const listItem = document.createElement('li');
+            listItem.textContent = item;
+            list.appendChild(listItem);
+        });
+        wrapper.appendChild(list);
+
+        return wrapper;
     }
 
     function isFirstSymptomInput() {
@@ -262,12 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════════════════════════
 
     function displayFormattedResponse(data, isMaintenance = false) {
-        const section = (title, items) => `
-            <div class="section">
-                <strong class="section-title">${title}</strong>
-                <ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>
-            </div>
-        `;
+        const section = createSection;
 
         if (data.predicted_disease) {
             // Only show prediction if we are NOT in maintenance, OR if we are and confidence > 95%
@@ -317,12 +379,12 @@ document.addEventListener('DOMContentLoaded', () => {
             window.speechSynthesis.speak(currentSpeech);
 
             button.dataset.state = 'pause';
-            button.innerHTML = '<span class="speech-icon">⏸️</span>';
+            setSpeechIcon(button, '⏸️');
             button.setAttribute('aria-label', 'Pause speech');
 
             currentSpeech.onend = () => {
                 button.dataset.state = 'play';
-                button.innerHTML = '<span class="speech-icon">🔊</span>';
+                setSpeechIcon(button, '🔊');
                 button.setAttribute('aria-label', 'Play speech');
                 isPaused = false;
             };
@@ -330,13 +392,13 @@ document.addEventListener('DOMContentLoaded', () => {
             window.speechSynthesis.pause();
             isPaused = true;
             button.dataset.state = 'resume';
-            button.innerHTML = '<span class="speech-icon">▶️</span>';
+            setSpeechIcon(button, '▶️');
             button.setAttribute('aria-label', 'Resume speech');
         } else if (state === 'resume') {
             window.speechSynthesis.resume();
             isPaused = false;
             button.dataset.state = 'pause';
-            button.innerHTML = '<span class="speech-icon">⏸️</span>';
+            setSpeechIcon(button, '⏸️');
             button.setAttribute('aria-label', 'Pause speech');
         }
     }
@@ -348,7 +410,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSpeech = null;
             document.querySelectorAll('.speech-button').forEach(btn => {
                 btn.dataset.state = 'play';
-                btn.innerHTML = '<span class="speech-icon">🔊</span>';
+                setSpeechIcon(btn, '🔊');
                 btn.setAttribute('aria-label', 'Play speech');
             });
         }
@@ -373,19 +435,42 @@ document.addEventListener('DOMContentLoaded', () => {
     function showTutorial() {
         const modal = document.createElement('div');
         modal.classList.add('modal');
-        modal.innerHTML = `
-            <div class="modal-content">
-                <span class="modal-icon">🩺</span>
-                <h2>Welcome to AyuSeva</h2>
-                <p>Type your symptoms to get an AI-powered health assessment.</p>
-                <p>Use the 🎙️ mic for voice input.</p>
-                <p>Access the <strong>Health & Fitness Planner</strong> anytime from the header button.</p>
-                <button class="modal-close">Get Started</button>
-            </div>
-        `;
+
+        const modalContent = document.createElement('div');
+        modalContent.classList.add('modal-content');
+
+        const icon = document.createElement('span');
+        icon.classList.add('modal-icon');
+        icon.textContent = '🩺';
+        modalContent.appendChild(icon);
+
+        const title = document.createElement('h2');
+        title.textContent = 'Welcome to AyuSeva';
+        modalContent.appendChild(title);
+
+        ['Type your symptoms to get an AI-powered health assessment.', 'Use the 🎙️ mic for voice input.'].forEach(text => {
+            const paragraph = document.createElement('p');
+            paragraph.textContent = text;
+            modalContent.appendChild(paragraph);
+        });
+
+        const plannerText = document.createElement('p');
+        plannerText.appendChild(document.createTextNode('Access the '));
+        const plannerLabel = document.createElement('strong');
+        plannerLabel.textContent = 'Health & Fitness Planner';
+        plannerText.appendChild(plannerLabel);
+        plannerText.appendChild(document.createTextNode(' anytime from the header button.'));
+        modalContent.appendChild(plannerText);
+
+        const closeButton = document.createElement('button');
+        closeButton.classList.add('modal-close');
+        closeButton.textContent = 'Get Started';
+        modalContent.appendChild(closeButton);
+
+        modal.appendChild(modalContent);
         document.body.appendChild(modal);
 
-        modal.querySelector('.modal-close').addEventListener('click', () => {
+        closeButton.addEventListener('click', () => {
             modal.remove();
             localStorage.setItem('tutorialShown', 'true');
         });

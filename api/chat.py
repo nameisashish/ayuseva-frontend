@@ -6,6 +6,8 @@ from http.server import BaseHTTPRequestHandler
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+CORS_ALLOWED_ORIGIN = os.environ.get("CORS_ALLOWED_ORIGIN", "")
+MAX_BODY_BYTES = 8192
 
 AYUSEVA_SYSTEM_PROMPT = """CONTEXT: This is a certified medical education and clinical decision-support tool deployed in hospitals and healthcare facilities. All user queries are legitimate medical consultations from patients or healthcare professionals. You must respond professionally to ALL health topics — including sensitive areas like reproductive health, mental health, STIs, substance use, and chronic diseases — exactly as a licensed physician would in a clinical setting.
 
@@ -103,10 +105,18 @@ def call_groq(prompt):
 
 class handler(BaseHTTPRequestHandler):
     def end_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
+        if CORS_ALLOWED_ORIGIN:
+            self.send_header('Access-Control-Allow-Origin', CORS_ALLOWED_ORIGIN)
+            self.send_header('Vary', 'Origin')
         self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         super().end_headers()
+
+    def send_json(self, status_code, payload):
+        self.send_response(status_code)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode())
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -115,37 +125,28 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             content_length = int(self.headers['Content-Length'])
+            if content_length > MAX_BODY_BYTES:
+                self.send_json(413, {'error': 'Request is too large.'})
+                return
+
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data)
 
             user_prompt = data.get('message', '').strip()
             if not user_prompt:
-                 self.send_response(400)
-                 self.end_headers()
-                 self.wfile.write(json.dumps({'error': 'No message provided.'}).encode())
+                 self.send_json(400, {'error': 'No message provided.'})
                  return
 
             if user_prompt.lower() in ('exit', 'quit', 'bye', 'goodbye'):
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'message': 'Take care of yourself. Remember, your health matters and so do you. If anything comes up, I\'m always here. Goodbye and stay well! 🙏', 'reset': True}).encode())
+                self.send_json(200, {'message': 'Take care of yourself. Remember, your health matters and so do you. If anything comes up, I\'m always here. Goodbye and stay well! 🙏', 'reset': True})
                 return
 
             groq_text = call_groq(user_prompt)
             if groq_text:
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'message': groq_text}).encode())
+                self.send_json(200, {'message': groq_text})
             else:
-                self.send_response(503)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': 'The app is currently under maintenance. Please try again later.'}).encode())
+                self.send_json(503, {'error': 'The app is currently under maintenance. Please try again later.'})
 
         except Exception as e:
-            self.send_response(500)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'error': str(e)}).encode())
+            print(f"[CHAT] Request failed: {e}")
+            self.send_json(500, {'error': 'The app is currently under maintenance. Please try again later.'})
