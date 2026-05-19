@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const PLANNER_URL = window.STREAMLIT_URL || 'https://ayuseva-planner.streamlit.app/';
     const sendButton = document.getElementById('send-button');
     const voiceButton = document.getElementById('voice-button');
     const userInput = document.getElementById('user-input');
@@ -98,10 +99,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     if (plannerButton) {
-        plannerButton.addEventListener('click', () => {
-            // Streamlit URL should be provided in the environment or replaced with the final URL
-            const STREAMLIT_URL = window.STREAMLIT_URL || "https://ayuseva-planner.streamlit.app/"; 
-            window.open(STREAMLIT_URL, '_blank');
+        plannerButton.href = PLANNER_URL;
+        plannerButton.addEventListener('click', (event) => {
+            event.preventDefault();
+
+            const plannerWindow = window.open(PLANNER_URL, '_blank', 'noopener,noreferrer');
+            if (!plannerWindow) {
+                window.location.href = PLANNER_URL;
+            }
+
             if (srAnnouncer) srAnnouncer.textContent = 'Opening Health & Fitness Planner in a new tab.';
         });
     }

@@ -193,11 +193,15 @@ body {
 
 /* ======================== PLANNER BUTTON ======================== */
 .planner-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 7px 16px;
   border: 1px solid rgba(255,255,255,.25);
   border-radius: var(--radius-md);
   background: rgba(255,255,255,.15);
   color: var(--header-text);
+  text-decoration: none;
   font-weight: 600;
   font-size: .8rem;
   cursor: pointer;
