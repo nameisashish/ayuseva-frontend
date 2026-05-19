@@ -249,9 +249,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function appendTextWithLineBreaks(container, text) {
-        text.replace(/\*/g, '').split('\n').forEach((line, index) => {
+        text.split('\n').forEach((line, index) => {
             if (index > 0) container.appendChild(document.createElement('br'));
-            container.appendChild(document.createTextNode(line));
+            appendFormattedLine(container, line);
+        });
+    }
+
+    function appendFormattedLine(container, line) {
+        // Strip leading '* ' or '- ' (markdown list markers)
+        line = line.replace(/^\s*[\*\-]\s+/, '');
+        // Split on **bold** markers and render
+        const parts = line.split(/(\*\*[^*]+\*\*)/);
+        parts.forEach(part => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+                const strong = document.createElement('strong');
+                strong.textContent = part.slice(2, -2);
+                container.appendChild(strong);
+            } else {
+                // Strip any remaining stray asterisks
+                container.appendChild(document.createTextNode(part.replace(/\*/g, '')));
+            }
         });
     }
 
@@ -312,7 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const list = document.createElement('ul');
         items.forEach(item => {
             const listItem = document.createElement('li');
-            listItem.textContent = item;
+            appendFormattedLine(listItem, String(item));
             list.appendChild(listItem);
         });
         wrapper.appendChild(list);
