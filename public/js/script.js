@@ -258,18 +258,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function appendFormattedLine(container, line) {
         // Strip leading '* ' or '- ' (markdown list markers)
         line = line.replace(/^\s*[\*\-]\s+/, '');
-        // Split on **bold** markers and render
-        const parts = line.split(/(\*\*[^*]+\*\*)/);
-        parts.forEach(part => {
-            if (part.startsWith('**') && part.endsWith('**')) {
-                const strong = document.createElement('strong');
-                strong.textContent = part.slice(2, -2);
-                container.appendChild(strong);
-            } else {
-                // Strip any remaining stray asterisks
-                container.appendChild(document.createTextNode(part.replace(/\*/g, '')));
-            }
-        });
+        // Strip any stray asterisks (from **bold** markdown)
+        line = line.replace(/\*\*/g, '').replace(/\*/g, '');
+        // Auto-bold text before the first colon (e.g. "Abscess rupture: description")
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0 && colonIdx < 60) {
+            const strong = document.createElement('strong');
+            strong.textContent = line.slice(0, colonIdx + 1);
+            container.appendChild(strong);
+            container.appendChild(document.createTextNode(line.slice(colonIdx + 1)));
+        } else {
+            container.appendChild(document.createTextNode(line));
+        }
     }
 
     function createSpeechIcon(symbol) {
