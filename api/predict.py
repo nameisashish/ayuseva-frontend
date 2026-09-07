@@ -2,10 +2,9 @@ import os
 import json
 import requests
 from http.server import BaseHTTPRequestHandler
+from groq_service import GroqError, complete
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL = "llama-3.3-70b-versatile"
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 HF_API_URL = os.environ.get(
     "HF_API_URL",
@@ -15,37 +14,11 @@ CORS_ALLOWED_ORIGIN = os.environ.get("CORS_ALLOWED_ORIGIN", "")
 MAX_BODY_BYTES = 8192
 
 
-def call_groq(prompt, system_msg="You are a medical expert. Provide detailed, well-structured medical information with clear bullet points for each section.", max_tokens=3000):
-    """Call Groq API using requests library."""
-    if not GROQ_API_KEY:
-        print("[GROQ] ⚠️ No API key configured")
-        return None
-    try:
-        resp = requests.post(
-            GROQ_URL,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {GROQ_API_KEY}"
-            },
-            json={
-                "model": GROQ_MODEL,
-                "messages": [
-                    {"role": "system", "content": system_msg},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": max_tokens
-            },
-            timeout=30
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["choices"][0]["message"]["content"]
-        print(f"[GROQ] ✅ {GROQ_MODEL} responded successfully")
-        return text
-    except Exception as e:
-        print(f"[GROQ] ❌ Failed: {e}")
-        return None
+def call_groq(prompt, system_msg="You are a medical expert. Provide detailed, well-structured medical information with clear bullet points for each section.", max_tokens=6144):
+    return complete(GROQ_API_KEY, [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": prompt},
+    ], max_tokens=max_tokens)
 
 
 def extract_information_with_prevention_and_distinction(response_text, user_symptoms):
@@ -157,7 +130,7 @@ class handler(BaseHTTPRequestHandler):
                 f"respond ONLY with 'VALID'. If the prediction is incorrect, unlikely, or the confidence is strictly less than 40%, "
                 f"respond ONLY with 'INVALID: [Your Corrected Disease Prediction]'. Do not include any other text."
             )
-            validation_response = call_groq(validation_prompt, max_tokens=50)
+            validation_response = call_groq(validation_prompt, max_tokens=2048)
 
             if validation_response:
                 validation_response = validation_response.strip()
@@ -201,11 +174,10 @@ class handler(BaseHTTPRequestHandler):
                     'medical_advice': medical_advice,
                     'complications': complications,
                 })
-            else:
-                response['quota_exceeded'] = True
-
             self.send_json(200, response)
 
+        except GroqError as e:
+            self.send_json(503, {'error': e.public_message, 'code': e.code})
         except Exception as e:
             print(f"[PREDICT] Request failed: {e}")
             self.send_json(500, {'error': 'The app is currently under maintenance. Please try again later.'})

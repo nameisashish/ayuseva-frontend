@@ -1,11 +1,9 @@
 import os
 import json
-import requests
 from http.server import BaseHTTPRequestHandler
+from groq_service import GroqError, complete
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL = "llama-3.3-70b-versatile"
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 CORS_ALLOWED_ORIGIN = os.environ.get("CORS_ALLOWED_ORIGIN", "")
 MAX_BODY_BYTES = 8192
 
@@ -71,36 +69,10 @@ YOUR VOICE: Warm. Knowledgeable. Reassuring. Direct when needed. Always human. Y
 
 
 def call_groq(prompt):
-    """Call Groq API using requests library."""
-    if not GROQ_API_KEY:
-        print("[GROQ] ⚠️ No API key configured")
-        return None
-    try:
-        resp = requests.post(
-            GROQ_URL,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {GROQ_API_KEY}"
-            },
-            json={
-                "model": GROQ_MODEL,
-                "messages": [
-                    {"role": "system", "content": AYUSEVA_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 1536
-            },
-            timeout=30
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["choices"][0]["message"]["content"]
-        print(f"[GROQ] ✅ {GROQ_MODEL} responded successfully")
-        return text
-    except Exception as e:
-        print(f"[GROQ] ❌ Failed: {e}")
-        return None
+    return complete(GROQ_API_KEY, [
+        {"role": "system", "content": AYUSEVA_SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ])
 
 
 class handler(BaseHTTPRequestHandler):
@@ -147,6 +119,8 @@ class handler(BaseHTTPRequestHandler):
             else:
                 self.send_json(503, {'error': 'The app is currently under maintenance. Please try again later.'})
 
+        except GroqError as e:
+            self.send_json(503, {'error': e.public_message, 'code': e.code})
         except Exception as e:
             print(f"[CHAT] Request failed: {e}")
             self.send_json(500, {'error': 'The app is currently under maintenance. Please try again later.'})

@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.maintenance) {
                     appendMessage(createDisclaimer('🔧 Maintenance:', data.message), 'bot');
                 } else if (data.error) {
-                    appendMessage(createDisclaimer('🔧 Maintenance:', 'AyuSeva is currently under maintenance. Please try again later.'), 'bot');
+                    appendMessage(createDisclaimer('Service unavailable:', data.error), 'bot');
                 } else {
                     if (data.quota_exceeded) {
                         displayFormattedResponse(data, true);
